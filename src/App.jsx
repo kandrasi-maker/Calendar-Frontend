@@ -34,12 +34,13 @@ const getEventSeverity = (title) => {
 
 const getConflictId = (eventA, eventB) => [eventA.id, eventB.id].sort().join('|');
 
-/// --- API Helper ---
+// --- API Helper ---
 // --- FIX: Hardcode API_BASE_URL to remove the import.meta warning ---
 // const API_BASE_URL = 'http://localhost:3001';
 // Note: For production deployment, you would change this line to:
 const API_BASE_URL = 'https://unified-availability-api.onrender.com';
 // --- End Fix ---
+
 
 // --- Gemini API Call Helper ---
 const callGeminiAPI = async (prompt, token) => {
@@ -240,6 +241,7 @@ export default function App() {
         }
 
         if (meOk) {
+            // Loading is already true
             try {
                 console.log("Fetching /api/events...");
                 const eventsResponse = await fetch(`${API_BASE_URL}/api/events`, { headers: { Authorization: `Bearer ${currentToken}` } });
@@ -347,11 +349,12 @@ export default function App() {
              console.log("Removing focus event listener.");
              window.removeEventListener('focus', handleFocus);
         };
-    }, []);
+    }, []); // Run only on mount
 
 
     // --- useEffect to fetch data when token/user changes ---
     useEffect(() => {
+        // Only run if token and user are *both* set
         if (token && user) {
             console.log("Token or User updated, fetching user data (useEffect [token, user])...");
             fetchUserData(token);
@@ -359,7 +362,7 @@ export default function App() {
              console.log("Token or User is missing in useEffect [token, user], skipping fetch.");
              if (!token && !user) setIsLoadingEvents(false);
          }
-    }, [token, user]);
+    }, [token, user]); // Run whenever token or user state changes
 
 
     // --- Process Events for Current View (Weekly) ---
@@ -420,7 +423,7 @@ export default function App() {
                 return [...prev, ...newConflicts];
             });
         }
-     }, [processedEvents, ignoredConflicts]); // Trigger when visible events change
+     }, [processedEvents, ignoredConflicts]);
 
 
     // --- Authentication Handlers ---
@@ -468,7 +471,7 @@ export default function App() {
     // --- Event/Conflict Handlers ---
     const handleCreateBoundary = async (boundary) => {
         setShowBoundaryModal(false);
-        setIsLoadingEvents(true); // Use global loading indicator
+        setIsLoadingEvents(true);
         setFetchError('');
         try {
             const response = await fetch(`${API_BASE_URL}/api/events/create`, {
@@ -483,7 +486,6 @@ export default function App() {
              }
             const result = await response.json();
             console.log('Block creation result:', result);
-            // --- FIX: Add new events directly to state ---
             if (result.createdEvents && Array.isArray(result.createdEvents)) {
                 const newParsedEvents = result.createdEvents.map(e => ({
                     ...e,
@@ -494,23 +496,21 @@ export default function App() {
                 setAllEvents(prev => [...prev, ...newParsedEvents]);
             } else {
                  console.warn("Backend did not return createdEvents, falling back to full refresh.");
-                 fetchUserData(token); // Fallback to refresh
+                 fetchUserData(token);
             }
-            // --- End Fix ---
         } catch (error) {
             console.error("Error creating boundary:", error);
              if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
                  setFetchError("Could not connect to the backend server to create block. Is it running?");
              } else { setFetchError(`Error creating block: ${error.message}`); }
         } finally {
-             setIsLoadingEvents(false); // Stop loading
+             setIsLoadingEvents(false);
         }
     };
     const handleResolveConflict = (toRemove) => {
         console.log("Removing event (optimistic):", toRemove.id);
         setAllEvents(prev => prev.filter(e => e.id !== toRemove.id));
         setUnresolvedConflicts(p => p.slice(1));
-        // TODO: Add backend call to delete toRemove.id
     };
     const handleReschedule = (toMove, newStart) => {
         const duration = toMove.end.getTime() - toMove.start.getTime();
@@ -518,7 +518,6 @@ export default function App() {
         console.log("Rescheduling event (optimistic):", toMove.id, "to", newStart);
         setAllEvents(prev => prev.map(e => e.id === toMove.id ? updatedEvent : e));
         setUnresolvedConflicts(p => p.slice(1));
-        // TODO: Add backend call to update toMove.id
     };
     const handleIgnoreConflict = (conflictId) => { setIgnoredConflicts(p => [...p, conflictId]); };
     const handleDeleteEvent = async (eventToDelete) => { console.log("Delete called, but not implemented in this version.") }; // Placeholder
@@ -530,7 +529,7 @@ export default function App() {
          return <AuthComponent onLoginSuccess={handleLoginSuccess} />;
      }
 
-    // --- Main App Components (Restored Weekly View) ---
+    // --- Main App Components ---
     const Onboarding = () => ( <div className="text-center p-10 border rounded-lg bg-white dark:bg-gray-800/50 mb-8 shadow-sm dark:border-gray-700"><h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-3">Welcome, {user?.email || 'User'}</h2><p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">Connect your calendars to see your unified availability.</p></div>);
     const Header = () => ( <header className="p-4 border-b bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20 dark:border-gray-700"><div className="container mx-auto flex justify-between items-center"><div className="flex items-center gap-4"><div className="flex items-center gap-3"><CalendarIcon /><h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Unified Availability</h1></div><div className="flex items-center gap-2"><button onClick={() => setViewStartDate(prev => addDays(prev, -7))} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"><ChevronLeftIcon /></button><button onClick={() => setViewStartDate(getStartOfWeek(new Date()))} className="px-4 py-2 text-sm rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">Today</button><button onClick={() => setViewStartDate(prev => addDays(prev, 7))} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"><ChevronRightIcon /></button></div><span className="text-sm text-gray-500 dark:text-gray-400 hidden md:block">{viewStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {addDays(viewStartDate, 6).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span></div><div className="flex items-center gap-3"><span className="text-sm text-gray-600 dark:text-gray-400 hidden lg:block">{user?.email || ''}</span>{isGoogleConnected ? (<button className="flex items-center gap-2 px-3 py-2 text-sm bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300 rounded-lg"><GoogleIcon /> Connected</button>) : (<button onClick={() => handleConnect('google')} className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"><GoogleIcon /> Connect Google</button>)}{isOutlookConnected ? (<button className="flex items-center gap-2 px-3 py-2 text-sm bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300 rounded-lg"><OutlookIcon /> Connected</button>) : (<button onClick={() => handleConnect('outlook')} className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"><OutlookIcon /> Connect Outlook</button>)}<button onClick={() => setShowBoundaryModal(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"><PlusIcon /> Create Block</button><button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">{theme === 'light' ? <MoonIcon/> : <SunIcon />}</button><button onClick={handleLogout} title="Logout" className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"><LogoutIcon/></button></div></div></header>);
     const Calendar = () => {
@@ -646,6 +645,7 @@ export default function App() {
 
         if (!event) return null;
         return ( <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-30 p-4"><div className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-lg"><div className="flex items-start justify-between mb-4 pb-4 border-b dark:border-gray-700"><div className="flex-1"><h3 className="text-xl sm:text-2xl font-bold dark:text-white flex items-center gap-3">{event.calendar === 'Google' ? <GoogleIcon /> : <OutlookIcon />}{event.title || "Untitled Event"}</h3><p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base mt-1">{formatDate(event.start)}</p><p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base">{formatTime(event.start)} - {formatTime(event.end)}</p></div><button onClick={onClose} disabled={isPreparing} className="p-2 ml-4 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-50"><XIcon/></button></div><div className="mb-6"><button onClick={handlePrepare} disabled={isPreparing} className="flex items-center justify-center w-full px-4 py-3 text-sm font-semibold bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-400 dark:disabled:bg-purple-800 transition-colors"><SparklesIcon/> {isPreparing ? 'Generating Agenda...' : '✨ Prepare for Meeting'}</button>{agenda && (<div className={`mt-4 p-4 rounded-lg text-sm space-y-2 ${agenda.toLowerCase().includes('error') ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' : 'bg-purple-50 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200'}`}><h4 className="font-bold">Suggested Agenda:</h4><div className="whitespace-pre-wrap">{agenda}</div></div>)}</div><div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-700">
+            {/* Delete Button removed */}\
             <button onClick={onClose} disabled={isPreparing} className="px-4 py-2 text-sm font-semibold bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50">Close</button>
         </div></div></div>);
     };
@@ -678,7 +678,7 @@ export default function App() {
         }
         // At least one calendar is connected
         if (Array.isArray(processedEvents) && processedEvents.length > 0) {
-            return <Calendar />; // Render the monthly calendar
+            return <Calendar />; // Render the weekly calendar
         } else {
              // Show "No events" only if loading is finished and no error occurred
              return <div className="text-center p-10 text-gray-500 dark:text-gray-400">No upcoming events found in your connected calendars for the next 30 days.</div>;
