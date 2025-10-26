@@ -35,11 +35,7 @@ const getEventSeverity = (title) => {
 const getConflictId = (eventA, eventB) => [eventA.id, eventB.id].sort().join('|');
 
 // --- API Helper ---
-// --- FIX: Hardcode API_BASE_URL to remove the import.meta warning ---
-// const API_BASE_URL = 'http://localhost:3001';
-// Note: For production deployment, you would change this line to:
 const API_BASE_URL = 'https://unified-availability-api.onrender.com';
-// --- End Fix ---
 
 
 // --- Gemini API Call Helper ---
@@ -507,20 +503,108 @@ export default function App() {
              setIsLoadingEvents(false);
         }
     };
+
+    // --- NEW: Full Backend Delete Function ---
+    const handleDeleteEvent = async (eventToDelete) => {
+        if (!eventToDelete || !eventToDelete.id || !eventToDelete.calendar) {
+            console.error("Invalid event data for deletion:", eventToDelete);
+            setFetchError("Cannot delete event: Invalid data.");
+            return;
+        }
+
+        console.log(`Deleting event: ${eventToDelete.title} (${eventToDelete.id}) from ${eventToDelete.calendar}`);
+        
+        // Optimistic UI update
+        setAllEvents(prev => prev.filter(e => e.id !== eventToDelete.id));
+        if(showEventDetail) setShowEventDetail(null); // Close modal
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/events/${eventToDelete.calendar.toLowerCase()}/${encodeURIComponent(eventToDelete.id)}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+
+            const responseText = await response.text(); // Read body once
+            if (!response.ok) {
+                let errorMessage = `Failed to delete event, status: ${response.status}`;
+                 const contentType = response.headers.get("content-type");
+                 if (contentType && contentType.includes("application/json")) {
+                     try { const errorData = JSON.parse(responseText); errorMessage = errorData.message || errorMessage; }
+                     catch (e) { /* Ignore parsing error */ }
+                 } else {
+                     const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+                     errorMessage = titleMatch ? `${titleMatch[1]} (status ${response.status})` : `Received non-JSON response (status ${response.status})`;
+                 }
+                throw new Error(errorMessage);
+            }
+             console.log('Delete result:', responseText);
+             // Success, optimistic update stands.
+        } catch (error) {
+            console.error("Error deleting event:", error);
+            setFetchError(`Error deleting event: ${error.message}. Reverting calendar.`);
+            // Revert optimistic update on failure by refetching all events
+            fetchUserData(token);
+        }
+    };
+    
+    // --- NEW: Full Backend Update Function ---
+    const handleUpdateEventTime = async (eventToMove, newStart) => {
+        const duration = eventToMove.end.getTime() - eventToMove.start.getTime();
+        const newEnd = new Date(newStart.getTime() + duration);
+        const originalEvents = [...allEvents]; // Save for revert
+        
+        console.log(`Rescheduling event: ${eventToMove.title} (${eventToMove.id}) to ${newStart}`);
+
+        // Optimistic UI update
+        setAllEvents(prev => prev.map(e => e.id === eventToMove.id ? { ...e, start: newStart, end: newEnd } : e));
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/events/${eventToMove.calendar.toLowerCase()}/${encodeURIComponent(eventToMove.id)}`, {
+                method: 'PATCH', // Use PATCH for updates
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ 
+                    start: newStart.toISOString(),
+                    end: newEnd.toISOString()
+                }),
+            });
+            
+            const responseText = await response.text();
+            if (!response.ok) {
+                 let errorMessage = `Failed to update event, status: ${response.status}`;
+                 const contentType = response.headers.get("content-type");
+                 if (contentType && contentType.includes("application/json")) {
+                     try { const errorData = JSON.parse(responseText); errorMessage = errorData.message || errorMessage; }
+                     catch (e) { /* Ignore */ }
+                 } else {
+                     const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+                     errorMessage = titleMatch ? `${titleMatch[1]} (status ${response.status})` : `Received non-JSON response (status ${response.status})`;
+                 }
+                throw new Error(errorMessage);
+            }
+            console.log('Update result:', responseText);
+            // Success, optimistic update stands.
+        } catch (error) {
+             console.error("Error rescheduling event:", error);
+             setFetchError(`Error rescheduling event: ${error.message}. Reverting changes.`);
+             setAllEvents(originalEvents); // Revert on failure
+        }
+    };
+
+    // --- Hook up conflict resolution to new backend functions ---
     const handleResolveConflict = (toRemove) => {
-        console.log("Removing event (optimistic):", toRemove.id);
-        setAllEvents(prev => prev.filter(e => e.id !== toRemove.id));
-        setUnresolvedConflicts(p => p.slice(1));
+        console.log(`Resolving conflict: Deleting "${toRemove.title}"`);
+        handleDeleteEvent(toRemove); // Call the main delete handler
+        setUnresolvedConflicts(p => p.slice(1)); // Close modal
     };
+    
     const handleReschedule = (toMove, newStart) => {
-        const duration = toMove.end.getTime() - toMove.start.getTime();
-        const updatedEvent = { ...toMove, start: newStart, end: new Date(newStart.getTime() + duration) };
-        console.log("Rescheduling event (optimistic):", toMove.id, "to", newStart);
-        setAllEvents(prev => prev.map(e => e.id === toMove.id ? updatedEvent : e));
-        setUnresolvedConflicts(p => p.slice(1));
+        console.log(`Resolving conflict: Rescheduling "${toMove.title}"`);
+        handleUpdateEventTime(toMove, newStart); // Call the main update handler
+        setUnresolvedConflicts(p => p.slice(1)); // Close modal
     };
+
     const handleIgnoreConflict = (conflictId) => { setIgnoredConflicts(p => [...p, conflictId]); };
-    const handleDeleteEvent = async (eventToDelete) => { console.log("Delete called, but not implemented in this version.") }; // Placeholder
+
 
     // --- Render Auth Screen if not logged in ---
      console.log("Rendering check - Before return: Token:", token, "User:", user);
@@ -640,13 +724,23 @@ export default function App() {
         return ( <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-30 p-4"><div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md"><h3 className="text-2xl font-bold mb-6 dark:text-white">Create Temporal Boundary</h3><form onSubmit={handleSubmit} className="space-y-4"><div><label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label><div className="flex gap-2 mt-1"><input type="text" id="title" value={title} onChange={e => setTitle(e.target.value)} placeholder='"Family Time"' className="flex-grow bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 dark:text-white" /><button type="button" onClick={handleSuggestTitle} disabled={isSuggesting || isCreating} className="px-3 py-2 text-sm font-semibold bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-400 dark:disabled:bg-purple-800 transition-colors">✨ {isSuggesting ? '...' : 'Suggest'}</button></div></div><div><label htmlFor="date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label><input type="date" id="date" value={date} onChange={e => setDate(e.target.value)} disabled={isCreating} className="mt-1 block w-full bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 dark:text-white disabled:opacity-50" /></div><div className="flex gap-4"><div className="flex-1"><label htmlFor="start" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Start Time</label><input type="time" id="start" value={startTime} onChange={e => setStartTime(e.target.value)} disabled={isCreating} className="mt-1 block w-full bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 dark:text-white disabled:opacity-50" /></div><div className="flex-1"><label htmlFor="end" className="block text-sm font-medium text-gray-700 dark:text-gray-300">End Time</label><input type="time" id="end" value={endTime} onChange={e => setEndTime(e.target.value)} disabled={isCreating} className="mt-1 block w-full bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 dark:text-white disabled:opacity-50" /></div></div>{error && <p className="text-red-500 text-sm bg-red-100 dark:bg-red-900/50 p-3 rounded-lg">{error}</p>}<div className="flex justify-end gap-4 pt-4"><button type="button" onClick={onClose} disabled={isCreating} className="px-5 py-2.5 text-sm font-semibold bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50">Cancel</button><button type="submit" disabled={isCreating} className="px-5 py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 dark:disabled:bg-blue-800">{isCreating ? 'Creating...' : 'Create Block'}</button></div></form></div></div>);
     };
     const EventDetailModal = ({ event, onClose }) => {
-        const [agenda, setAgenda] = useState(''); const [isPreparing, setIsPreparing] = useState(false);
+        const [agenda, setAgenda] = useState(''); const [isPreparing, setIsPreparing] = useState(false); const [isDeleting, setIsDeleting] = useState(false);
         const handlePrepare = async () => { setIsPreparing(true); setAgenda(''); const prompt = `Create a concise 3-point agenda for a meeting titled "${event.title}". Use bullet points.`; const result = await callGeminiAPI(prompt, token); setAgenda(result); setIsPreparing(false); };
+        
+        // --- Updated Delete Handler ---
+        const onDeleteConfirm = async () => {
+             // We use a simple window.confirm for the MVP
+             if (window.confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)){
+                 setIsDeleting(true);
+                 await handleDeleteEvent(event); // Call the main handler
+                 // No need to set state false, as onClose will be called by handler
+             }
+         };
 
         if (!event) return null;
-        return ( <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-30 p-4"><div className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-lg"><div className="flex items-start justify-between mb-4 pb-4 border-b dark:border-gray-700"><div className="flex-1"><h3 className="text-xl sm:text-2xl font-bold dark:text-white flex items-center gap-3">{event.calendar === 'Google' ? <GoogleIcon /> : <OutlookIcon />}{event.title || "Untitled Event"}</h3><p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base mt-1">{formatDate(event.start)}</p><p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base">{formatTime(event.start)} - {formatTime(event.end)}</p></div><button onClick={onClose} disabled={isPreparing} className="p-2 ml-4 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-50"><XIcon/></button></div><div className="mb-6"><button onClick={handlePrepare} disabled={isPreparing} className="flex items-center justify-center w-full px-4 py-3 text-sm font-semibold bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-400 dark:disabled:bg-purple-800 transition-colors"><SparklesIcon/> {isPreparing ? 'Generating Agenda...' : '✨ Prepare for Meeting'}</button>{agenda && (<div className={`mt-4 p-4 rounded-lg text-sm space-y-2 ${agenda.toLowerCase().includes('error') ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' : 'bg-purple-50 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200'}`}><h4 className="font-bold">Suggested Agenda:</h4><div className="whitespace-pre-wrap">{agenda}</div></div>)}</div><div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-700">
-            {/* Delete Button removed */}\
-            <button onClick={onClose} disabled={isPreparing} className="px-4 py-2 text-sm font-semibold bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50">Close</button>
+        return ( <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-30 p-4"><div className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-lg"><div className="flex items-start justify-between mb-4 pb-4 border-b dark:border-gray-700"><div className="flex-1"><h3 className="text-xl sm:text-2xl font-bold dark:text-white flex items-center gap-3">{event.calendar === 'Google' ? <GoogleIcon /> : <OutlookIcon />}{event.title || "Untitled Event"}</h3><p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base mt-1">{formatDate(event.start)}</p><p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base">{formatTime(event.start)} - {formatTime(event.end)}</p></div><button onClick={onClose} disabled={isPreparing || isDeleting} className="p-2 ml-4 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-50"><XIcon/></button></div><div className="mb-6"><button onClick={handlePrepare} disabled={isPreparing || isDeleting} className="flex items-center justify-center w-full px-4 py-3 text-sm font-semibold bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-400 dark:disabled:bg-purple-800 transition-colors"><SparklesIcon/> {isPreparing ? 'Generating Agenda...' : '✨ Prepare for Meeting'}</button>{agenda && (<div className={`mt-4 p-4 rounded-lg text-sm space-y-2 ${agenda.toLowerCase().includes('error') ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' : 'bg-purple-50 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200'}`}><h4 className="font-bold">Suggested Agenda:</h4><div className="whitespace-pre-wrap">{agenda}</div></div>)}</div><div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-700">
+            <button onClick={onDeleteConfirm} disabled={isDeleting || isPreparing} className="flex items-center justify-center gap-1 px-4 py-2 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-red-400 dark:disabled:bg-red-800 transition-colors"><TrashIcon /> {isDeleting ? 'Deleting...' : 'Delete Event'}</button>
+            <button onClick={onClose} disabled={isDeleting || isPreparing} className="px-4 py-2 text-sm font-semibold bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50">Close</button>
         </div></div></div>);
     };
     const ConflictResolutionModal = ({ conflicts, onResolve, onReschedule, onIgnore }) => {
@@ -678,7 +772,7 @@ export default function App() {
         }
         // At least one calendar is connected
         if (Array.isArray(processedEvents) && processedEvents.length > 0) {
-            return <Calendar />; // Render the weekly calendar
+            return <Calendar />;
         } else {
              // Show "No events" only if loading is finished and no error occurred
              return <div className="text-center p-10 text-gray-500 dark:text-gray-400">No upcoming events found in your connected calendars for the next 30 days.</div>;
