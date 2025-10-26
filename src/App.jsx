@@ -511,9 +511,9 @@ export default function App() {
             setFetchError("Cannot delete event: Invalid data.");
             return;
         }
-
         console.log(`Deleting event: ${eventToDelete.title} (${eventToDelete.id}) from ${eventToDelete.calendar}`);
         
+        const originalEvents = [...allEvents]; // Store for revert
         // Optimistic UI update
         setAllEvents(prev => prev.filter(e => e.id !== eventToDelete.id));
         if(showEventDetail) setShowEventDetail(null); // Close modal
@@ -542,8 +542,8 @@ export default function App() {
         } catch (error) {
             console.error("Error deleting event:", error);
             setFetchError(`Error deleting event: ${error.message}. Reverting calendar.`);
-            // Revert optimistic update on failure by refetching all events
-            fetchUserData(token);
+            // Revert optimistic update on failure
+            setAllEvents(originalEvents);
         }
     };
     
@@ -733,7 +733,7 @@ export default function App() {
              if (window.confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)){
                  setIsDeleting(true);
                  await handleDeleteEvent(event); // Call the main handler
-                 // No need to set state false, as onClose will be called by handler
+                 // No need to set state false, as the main handler closes the modal
              }
          };
 
