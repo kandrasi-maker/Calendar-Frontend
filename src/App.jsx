@@ -470,13 +470,24 @@ export default function App() {
     // --- Event/Conflict Handlers ---
     const handleCreateBoundary = async (boundary) => {
         setShowBoundaryModal(false);
-        setIsLoadingEvents(true);
+        setIsLoadingEvents(true); // Use global loading indicator
         setFetchError('');
+        
+        // --- FIX: Get the browser's local timezone ---
+        const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        console.log(`Creating block with timezone: ${userTimeZone}`);
+        // --- End Fix ---
+
         try {
             const response = await fetch(`${API_BASE_URL}/api/events/create`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ title: boundary.title, start: boundary.start.toISOString(), end: boundary.end.toISOString() }),
+                body: JSON.stringify({ 
+                    title: boundary.title, 
+                    start: boundary.start.toISOString(), 
+                    end: boundary.end.toISOString(),
+                    timeZone: userTimeZone // <-- Send the timezone to the backend
+                }),
             });
              if (!response.ok) {
                  const text = await response.text();
@@ -485,6 +496,7 @@ export default function App() {
              }
             const result = await response.json();
             console.log('Block creation result:', result);
+            // --- FIX: Add new events directly to state ---
             if (result.createdEvents && Array.isArray(result.createdEvents)) {
                 const newParsedEvents = result.createdEvents.map(e => ({
                     ...e,
@@ -495,15 +507,16 @@ export default function App() {
                 setAllEvents(prev => [...prev, ...newParsedEvents]);
             } else {
                  console.warn("Backend did not return createdEvents, falling back to full refresh.");
-                 fetchUserData(token);
+                 fetchUserData(token); // Fallback to refresh
             }
+            // --- End Fix ---
         } catch (error) {
             console.error("Error creating boundary:", error);
              if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
                  setFetchError("Could not connect to the backend server to create block. Is it running?");
              } else { setFetchError(`Error creating block: ${error.message}`); }
         } finally {
-             setIsLoadingEvents(false);
+             setIsLoadingEvents(false); // Stop loading
         }
     };
     
