@@ -253,14 +253,17 @@ export default function App() {
                 // --- Robust Date Parsing ---
                 const parsedEvents = Array.isArray(eventsData)
                     ? eventsData.map(e => {
+                        // Google format (ISO 8601 with offset) and Outlook format (ISO 8601 without offset)
+                        // are both handled correctly by new Date() in modern browsers.
                         const start = e.start ? new Date(e.start) : null;
                         const end = e.end ? new Date(e.end) : null;
+                        
                         if (!start || !end || isNaN(start) || isNaN(end)) {
                              console.warn(`Invalid date found (start: ${e.start}, end: ${e.end}), skipping event:`, e.title);
-                             return null;
+                             return null; // Skip invalid events
                         }
                         return {...e, start, end };
-                      }).filter(Boolean)
+                      }).filter(Boolean) // Remove null entries from failed parsing
                     : [];
                  console.log(`Parsed ${parsedEvents.length} valid events.`);
                  setAllEvents(parsedEvents);
@@ -503,7 +506,7 @@ export default function App() {
              setIsLoadingEvents(false);
         }
     };
-
+    
     // --- NEW: Full Backend Delete Function ---
     const handleDeleteEvent = async (eventToDelete) => {
         if (!eventToDelete || !eventToDelete.id || !eventToDelete.calendar) {
@@ -727,13 +730,11 @@ export default function App() {
         const [agenda, setAgenda] = useState(''); const [isPreparing, setIsPreparing] = useState(false); const [isDeleting, setIsDeleting] = useState(false);
         const handlePrepare = async () => { setIsPreparing(true); setAgenda(''); const prompt = `Create a concise 3-point agenda for a meeting titled "${event.title}". Use bullet points.`; const result = await callGeminiAPI(prompt, token); setAgenda(result); setIsPreparing(false); };
         
-        // --- Updated Delete Handler ---
         const onDeleteConfirm = async () => {
-             // We use a simple window.confirm for the MVP
              if (window.confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)){
                  setIsDeleting(true);
                  await handleDeleteEvent(event); // Call the main handler
-                 // No need to set state false, as the main handler closes the modal
+                 // Modal is closed by main handler setting showEventDetail(null)
              }
          };
 
@@ -772,7 +773,7 @@ export default function App() {
         }
         // At least one calendar is connected
         if (Array.isArray(processedEvents) && processedEvents.length > 0) {
-            return <Calendar />;
+            return <Calendar />; // Render the weekly calendar
         } else {
              // Show "No events" only if loading is finished and no error occurred
              return <div className="text-center p-10 text-gray-500 dark:text-gray-400">No upcoming events found in your connected calendars for the next 30 days.</div>;
