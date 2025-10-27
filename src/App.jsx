@@ -20,6 +20,17 @@ const formatDateTime = (date) => new Date(date).toLocaleString('en-US', { month:
 const formatDayHeader = (date) => new Date(date).toLocaleDateString('en-US', { weekday: 'short' });
 const formatDayNumber = (date) => new Date(date).getDate();
 
+// --- NEW HELPER: Formats a Date object to YYYY-MM-DDTHH:MM:SS (local time) ---
+const formatLocalDateTime = (date) => {
+  const pad = (num) => String(num).padStart(2, '0');
+  const YYYY = date.getFullYear();
+  const MM = pad(date.getMonth() + 1);
+  const DD = pad(date.getDate());
+  const HH = pad(date.getHours());
+  const mm = pad(date.getMinutes());
+  const ss = pad(date.getSeconds());
+  return `${YYYY}-${MM}-${DD}T${HH}:${mm}:${ss}`;
+};
 
 // --- AI & Logic Helpers ---
 const BUFFER_MS = 15 * 60 * 1000;
@@ -470,12 +481,16 @@ export default function App() {
     // --- Event/Conflict Handlers ---
     const handleCreateBoundary = async (boundary) => {
         setShowBoundaryModal(false);
-        setIsLoadingEvents(true); // Use global loading indicator
+        setIsLoadingEvents(true);
         setFetchError('');
-        
+
         // --- FIX: Get the browser's local timezone ---
         const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         console.log(`Creating block with timezone: ${userTimeZone}`);
+        
+        // --- FIX: Send LOCAL time string, not UTC string ---
+        const localStartStr = formatLocalDateTime(boundary.start); // e.g., "2025-10-27T09:00:00"
+        const localEndStr = formatLocalDateTime(boundary.end);
         // --- End Fix ---
 
         try {
@@ -484,9 +499,9 @@ export default function App() {
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ 
                     title: boundary.title, 
-                    start: boundary.start.toISOString(), 
-                    end: boundary.end.toISOString(),
-                    timeZone: userTimeZone // <-- Send the timezone to the backend
+                    start: localStartStr, // <-- Send local time string
+                    end: localEndStr,     // <-- Send local time string
+                    timeZone: userTimeZone // <-- Send the timezone
                 }),
             });
              if (!response.ok) {
@@ -496,7 +511,6 @@ export default function App() {
              }
             const result = await response.json();
             console.log('Block creation result:', result);
-            // --- FIX: Add new events directly to state ---
             if (result.createdEvents && Array.isArray(result.createdEvents)) {
                 const newParsedEvents = result.createdEvents.map(e => ({
                     ...e,
@@ -507,16 +521,15 @@ export default function App() {
                 setAllEvents(prev => [...prev, ...newParsedEvents]);
             } else {
                  console.warn("Backend did not return createdEvents, falling back to full refresh.");
-                 fetchUserData(token); // Fallback to refresh
+                 fetchUserData(token);
             }
-            // --- End Fix ---
         } catch (error) {
             console.error("Error creating boundary:", error);
              if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
                  setFetchError("Could not connect to the backend server to create block. Is it running?");
              } else { setFetchError(`Error creating block: ${error.message}`); }
         } finally {
-             setIsLoadingEvents(false); // Stop loading
+             setIsLoadingEvents(false);
         }
     };
     
