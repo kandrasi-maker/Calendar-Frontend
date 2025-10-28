@@ -482,14 +482,11 @@ export default function App() {
         setIsLoadingEvents(true);
         setFetchError('');
         
-        // --- FIX: Get the browser's local timezone ---
         const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         console.log(`Creating block with timezone: ${userTimeZone}`);
         
-        // --- FIX: Send LOCAL time string, not UTC string ---
-        const localStartStr = formatLocalDateTime(boundary.start); // e.g., "2025-10-28T09:00:00"
+        const localStartStr = formatLocalDateTime(boundary.start);
         const localEndStr = formatLocalDateTime(boundary.end);
-        // --- End Fix ---
 
         try {
             const response = await fetch(`${API_BASE_URL}/api/events/create`, {
@@ -497,9 +494,9 @@ export default function App() {
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ 
                     title: boundary.title, 
-                    start: localStartStr,     // <-- Send local time string
-                    end: localEndStr,         // <-- Send local time string
-                    timeZone: userTimeZone    // <-- Send the timezone
+                    start: localStartStr,
+                    end: localEndStr,
+                    timeZone: userTimeZone
                 }),
             });
              if (!response.ok) {
@@ -531,7 +528,7 @@ export default function App() {
         }
     };
     
-    // --- NEW: Full Backend Delete Function ---
+    // --- Full Backend Delete Function ---
     const handleDeleteEvent = async (eventToDelete) => {
         if (!eventToDelete || !eventToDelete.id || !eventToDelete.calendar) {
             console.error("Invalid event data for deletion:", eventToDelete);
@@ -540,10 +537,9 @@ export default function App() {
         }
         console.log(`Deleting event: ${eventToDelete.title} (${eventToDelete.id}) from ${eventToDelete.calendar}`);
         
-        const originalEvents = [...allEvents]; // Store for revert
-        // Optimistic UI update
+        const originalEvents = [...allEvents];
         setAllEvents(prev => prev.filter(e => e.id !== eventToDelete.id));
-        if(showEventDetail) setShowEventDetail(null); // Close modal
+        if(showEventDetail) setShowEventDetail(null);
         
         try {
             const response = await fetch(`${API_BASE_URL}/api/events/${eventToDelete.calendar.toLowerCase()}/${encodeURIComponent(eventToDelete.id)}`, {
@@ -551,7 +547,7 @@ export default function App() {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
-            const responseText = await response.text(); // Read body once
+            const responseText = await response.text();
             if (!response.ok) {
                 let errorMessage = `Failed to delete event, status: ${response.status}`;
                  const contentType = response.headers.get("content-type");
@@ -565,37 +561,32 @@ export default function App() {
                 throw new Error(errorMessage);
             }
              console.log('Delete result:', responseText);
-             // Success, optimistic update stands.
         } catch (error) {
             console.error("Error deleting event:", error);
             setFetchError(`Error deleting event: ${error.message}. Reverting calendar.`);
-            // Revert optimistic update on failure
-            setAllEvents(originalEvents);
+            setAllEvents(originalEvents); // Revert
         }
     };
     
-    // --- NEW: Full Backend Update Function ---
+    // --- Full Backend Update Function ---
     const handleUpdateEventTime = async (eventToMove, newStart) => {
         const duration = eventToMove.end.getTime() - eventToMove.start.getTime();
         const newEnd = new Date(newStart.getTime() + duration);
-        const originalEvents = [...allEvents]; // Save for revert
+        const originalEvents = [...allEvents];
         
         console.log(`Rescheduling event: ${eventToMove.title} (${eventToMove.id}) to ${newStart}`);
-
-        // Optimistic UI update
         setAllEvents(prev => prev.map(e => e.id === eventToMove.id ? { ...e, start: newStart, end: newEnd } : e));
-        
-        // --- Get timezone to send to backend ---
+
         const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
         try {
             const response = await fetch(`${API_BASE_URL}/api/events/${eventToMove.calendar.toLowerCase()}/${encodeURIComponent(eventToMove.id)}`, {
-                method: 'PATCH', // Use PATCH for updates
+                method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ 
-                    start: formatLocalDateTime(newStart), // Send local time string
-                    end: formatLocalDateTime(newEnd),     // Send local time string
-                    timeZone: userTimeZone                // Send timezone
+                    start: formatLocalDateTime(newStart),
+                    end: formatLocalDateTime(newEnd),
+                    timeZone: userTimeZone
                 }),
             });
             
@@ -613,25 +604,24 @@ export default function App() {
                 throw new Error(errorMessage);
             }
             console.log('Update result:', responseText);
-            // Success, optimistic update stands.
         } catch (error) {
              console.error("Error rescheduling event:", error);
              setFetchError(`Error rescheduling event: ${error.message}. Reverting changes.`);
-             setAllEvents(originalEvents); // Revert on failure
+             setAllEvents(originalEvents);
         }
     };
 
     // --- Hook up conflict resolution to new backend functions ---
     const handleResolveConflict = (toRemove) => {
         console.log(`Resolving conflict: Deleting "${toRemove.title}"`);
-        handleDeleteEvent(toRemove); // Call the main delete handler
-        setUnresolvedConflicts(p => p.slice(1)); // Close modal
+        handleDeleteEvent(toRemove);
+        setUnresolvedConflicts(p => p.slice(1));
     };
     
     const handleReschedule = (toMove, newStart) => {
         console.log(`Resolving conflict: Rescheduling "${toMove.title}"`);
-        handleUpdateEventTime(toMove, newStart); // Call the main update handler
-        setUnresolvedConflicts(p => p.slice(1)); // Close modal
+        handleUpdateEventTime(toMove, newStart);
+        setUnresolvedConflicts(p => p.slice(1));
     };
 
     const handleIgnoreConflict = (conflictId) => { setIgnoredConflicts(p => [...p, conflictId]); };
