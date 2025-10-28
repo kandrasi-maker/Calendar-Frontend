@@ -531,7 +531,7 @@ export default function App() {
         }
     };
     
-    // --- Full Backend Delete Function ---
+    // --- FIX: Full Backend Delete Function ---
     const handleDeleteEvent = async (eventToDelete) => {
         if (!eventToDelete || !eventToDelete.id || !eventToDelete.calendar) {
             console.error("Invalid event data for deletion:", eventToDelete);
@@ -540,7 +540,8 @@ export default function App() {
         }
         console.log(`Deleting event: ${eventToDelete.title} (${eventToDelete.id}) from ${eventToDelete.calendar}`);
         
-        const originalEvents = [...allEvents];
+        const originalEvents = [...allEvents]; // Store for revert
+        // Optimistic UI update
         setAllEvents(prev => prev.filter(e => e.id !== eventToDelete.id));
         if(showEventDetail) setShowEventDetail(null);
         
@@ -550,7 +551,7 @@ export default function App() {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
-            const responseText = await response.text();
+            const responseText = await response.text(); // Read body once
             if (!response.ok) {
                 let errorMessage = `Failed to delete event, status: ${response.status}`;
                  const contentType = response.headers.get("content-type");
@@ -571,7 +572,7 @@ export default function App() {
         }
     };
     
-    // --- Full Backend Update Function ---
+    // --- FIX: Full Backend Update Function ---
     const handleUpdateEventTime = async (eventToMove, newStart) => {
         const duration = eventToMove.end.getTime() - eventToMove.start.getTime();
         const newEnd = new Date(newStart.getTime() + duration);
@@ -587,8 +588,8 @@ export default function App() {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ 
-                    start: formatLocalDateTime(newStart), // Send local time
-                    end: formatLocalDateTime(newEnd),     // Send local time
+                    start: formatLocalDateTime(newStart),
+                    end: formatLocalDateTime(newEnd),
                     timeZone: userTimeZone
                 }),
             });
@@ -614,16 +615,16 @@ export default function App() {
         }
     };
 
-    // --- Hook up conflict resolution to new backend functions ---
+    // --- FIX: Hook up conflict resolution to new backend functions ---
     const handleResolveConflict = (toRemove) => {
         console.log(`Resolving conflict: Deleting "${toRemove.title}"`);
-        handleDeleteEvent(toRemove);
+        handleDeleteEvent(toRemove); // Call the main delete handler
         setUnresolvedConflicts(p => p.slice(1));
     };
     
     const handleReschedule = (toMove, newStart) => {
         console.log(`Resolving conflict: Rescheduling "${toMove.title}"`);
-        handleUpdateEventTime(toMove, newStart);
+        handleUpdateEventTime(toMove, newStart); // Call the main update handler
         setUnresolvedConflicts(p => p.slice(1));
     };
 
