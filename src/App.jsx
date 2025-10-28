@@ -482,11 +482,14 @@ export default function App() {
         setIsLoadingEvents(true);
         setFetchError('');
         
+        // --- FIX: Get the browser's local timezone ---
         const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         console.log(`Creating block with timezone: ${userTimeZone}`);
         
-        const localStartStr = formatLocalDateTime(boundary.start);
+        // --- FIX: Send LOCAL time string, not UTC string ---
+        const localStartStr = formatLocalDateTime(boundary.start); // e.g., "2025-10-28T09:00:00"
         const localEndStr = formatLocalDateTime(boundary.end);
+        // --- End Fix ---
 
         try {
             const response = await fetch(`${API_BASE_URL}/api/events/create`, {
@@ -494,9 +497,9 @@ export default function App() {
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ 
                     title: boundary.title, 
-                    start: localStartStr,
-                    end: localEndStr,
-                    timeZone: userTimeZone
+                    start: localStartStr,     // <-- Send local time string
+                    end: localEndStr,         // <-- Send local time string
+                    timeZone: userTimeZone    // <-- Send the timezone
                 }),
             });
              if (!response.ok) {
@@ -584,8 +587,8 @@ export default function App() {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ 
-                    start: formatLocalDateTime(newStart),
-                    end: formatLocalDateTime(newEnd),
+                    start: formatLocalDateTime(newStart), // Send local time
+                    end: formatLocalDateTime(newEnd),     // Send local time
                     timeZone: userTimeZone
                 }),
             });
