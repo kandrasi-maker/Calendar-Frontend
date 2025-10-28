@@ -32,6 +32,7 @@ const formatLocalDateTime = (date) => {
   return `${YYYY}-${MM}-${DD}T${HH}:${mm}:${ss}`;
 };
 
+
 // --- AI & Logic Helpers ---
 const BUFFER_MS = 15 * 60 * 1000;
 
@@ -264,17 +265,14 @@ export default function App() {
                 // --- Robust Date Parsing ---
                 const parsedEvents = Array.isArray(eventsData)
                     ? eventsData.map(e => {
-                        // Google format (ISO 8601 with offset) and Outlook format (ISO 8601 without offset)
-                        // are both handled correctly by new Date() in modern browsers.
                         const start = e.start ? new Date(e.start) : null;
                         const end = e.end ? new Date(e.end) : null;
-                        
                         if (!start || !end || isNaN(start) || isNaN(end)) {
                              console.warn(`Invalid date found (start: ${e.start}, end: ${e.end}), skipping event:`, e.title);
-                             return null; // Skip invalid events
+                             return null;
                         }
                         return {...e, start, end };
-                      }).filter(Boolean) // Remove null entries from failed parsing
+                      }).filter(Boolean)
                     : [];
                  console.log(`Parsed ${parsedEvents.length} valid events.`);
                  setAllEvents(parsedEvents);
@@ -487,19 +485,8 @@ export default function App() {
         // --- FIX: Get the browser's local timezone ---
         const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         console.log(`Creating block with timezone: ${userTimeZone}`);
-
-        // --- FIX: Formats a Date object to YYYY-MM-DDTHH:MM:SS (local time) ---
-        const formatLocalDateTime = (date) => {
-          const pad = (num) => String(num).padStart(2, '0');
-          const YYYY = date.getFullYear();
-          const MM = pad(date.getMonth() + 1);
-          const DD = pad(date.getDate());
-          const HH = pad(date.getHours());
-          const mm = pad(date.getMinutes());
-          const ss = pad(date.getSeconds());
-          return `${YYYY}-${MM}-${DD}T${HH}:${mm}:${ss}`;
-        };
         
+        // --- FIX: Send LOCAL time string, not UTC string ---
         const localStartStr = formatLocalDateTime(boundary.start); // e.g., "2025-10-28T09:00:00"
         const localEndStr = formatLocalDateTime(boundary.end);
         // --- End Fix ---
@@ -522,7 +509,6 @@ export default function App() {
              }
             const result = await response.json();
             console.log('Block creation result:', result);
-            
             if (result.createdEvents && Array.isArray(result.createdEvents)) {
                 const newParsedEvents = result.createdEvents.map(e => ({
                     ...e,
@@ -533,7 +519,7 @@ export default function App() {
                 setAllEvents(prev => [...prev, ...newParsedEvents]);
             } else {
                  console.warn("Backend did not return createdEvents, falling back to full refresh.");
-                 fetchUserData(token); // Fallback to refresh
+                 fetchUserData(token);
             }
         } catch (error) {
             console.error("Error creating boundary:", error);
@@ -541,7 +527,7 @@ export default function App() {
                  setFetchError("Could not connect to the backend server to create block. Is it running?");
              } else { setFetchError(`Error creating block: ${error.message}`); }
         } finally {
-             setIsLoadingEvents(false); // Stop loading
+             setIsLoadingEvents(false);
         }
     };
     
@@ -598,14 +584,18 @@ export default function App() {
 
         // Optimistic UI update
         setAllEvents(prev => prev.map(e => e.id === eventToMove.id ? { ...e, start: newStart, end: newEnd } : e));
+        
+        // --- Get timezone to send to backend ---
+        const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
         try {
             const response = await fetch(`${API_BASE_URL}/api/events/${eventToMove.calendar.toLowerCase()}/${encodeURIComponent(eventToMove.id)}`, {
                 method: 'PATCH', // Use PATCH for updates
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ 
-                    start: newStart.toISOString(),
-                    end: newEnd.toISOString()
+                    start: formatLocalDateTime(newStart), // Send local time string
+                    end: formatLocalDateTime(newEnd),     // Send local time string
+                    timeZone: userTimeZone                // Send timezone
                 }),
             });
             
@@ -772,7 +762,7 @@ export default function App() {
              if (window.confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)){
                  setIsDeleting(true);
                  await handleDeleteEvent(event); // Call the main handler
-                 // Modal is closed by main handler setting showEventDetail(null)
+                 // Modal will be closed by main handler setting showEventDetail(null)
              }
          };
 
@@ -811,7 +801,7 @@ export default function App() {
         }
         // At least one calendar is connected
         if (Array.isArray(processedEvents) && processedEvents.length > 0) {
-            return <Calendar />; // Render the weekly calendar
+            return <Calendar />;
         } else {
              // Show "No events" only if loading is finished and no error occurred
              return <div className="text-center p-10 text-gray-500 dark:text-gray-400">No upcoming events found in your connected calendars for the next 30 days.</div>;
