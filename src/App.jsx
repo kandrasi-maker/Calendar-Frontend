@@ -1,5 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
+// --- Add this inside your App.jsx, after imports ---
+const SeverityBadge = ({ severity }) => {
+  const colors = {
+    High: 'bg-orange-500 text-white',
+    Medium: 'bg-blue-500 text-white',
+    Low: 'bg-green-500 text-white'
+  };
+  return (
+    <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${colors[severity] || 'bg-gray-400 text-white'}`}>
+      {severity}
+    </span>
+  );
+};
+
 // --- Helper Functions for Date Manipulation ---
 const addDays = (date, days) => {
     const result = new Date(date);
@@ -782,10 +796,22 @@ const handleCreateBoundary = async (boundary) => {
         </div></div></div>);
     };
     const ConflictResolutionModal = ({ conflicts, onResolve, onReschedule, onIgnore }) => {
-          const [isResolving, setIsResolving] = useState(false); const [aiSuggestion, setAiSuggestion] = useState(null);
+        const [isResolving, setIsResolving] = useState(false); const [aiSuggestion, setAiSuggestion] = useState(null);
         const currentConflict = conflicts[0];
         if (!currentConflict) return null;
         let [eventA, eventB] = currentConflict;
+
+        // 3. ADD THIS HELPER
+    const formatConflictTime = (date) => {
+        return new Date(date).toLocaleString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        };
 
         const findNextSlots = (toReschedule, allEvents, count = 3) => { const slots = []; const duration = toReschedule.end.getTime() - toReschedule.start.getTime(); const requiredDuration = duration + (2 * BUFFER_MS); let searchStart = new Date(); const sorted = [...allEvents].filter(e => e.id !== toReschedule.id).sort((a,b) => a.start - b.start); for (let i = 0; i < 14; i++) { let dayStart = new Date(searchStart); dayStart.setDate(dayStart.getDate() + i); dayStart.setHours(9, 0, 0, 0); let dayEnd = new Date(dayStart); dayEnd.setHours(17, 0, 0, 0); let lastEventEnd = dayStart; for(const event of sorted.filter(e => e.start.toDateString() === dayStart.toDateString())) { if (event.start.getTime() - lastEventEnd.getTime() >= requiredDuration) { slots.push(new Date(lastEventEnd.getTime() + BUFFER_MS)); if (slots.length >= count) return slots; } lastEventEnd = new Date(Math.max(lastEventEnd.getTime(), event.end.getTime())); } if (dayEnd.getTime() - lastEventEnd.getTime() >= requiredDuration) { slots.push(new Date(lastEventEnd.getTime() + BUFFER_MS)); if (slots.length >= count) return slots; } } return slots; };
         const handleGetAiSuggestion = () => { setIsResolving(true); setAiSuggestion(null); setTimeout(() => { const severityMap = { 'High': 3, 'Medium': 2, 'Low': 1 }; let toKeep = severityMap[eventA.severity] >= severityMap[eventB.severity] ? eventA : eventB; let toReschedule = toKeep === eventA ? eventB : eventA; const nextSlots = findNextSlots(toReschedule, processedEvents); setAiSuggestion({ toKeep, toReschedule, nextSlots }); setIsResolving(false); }, 1500); };
