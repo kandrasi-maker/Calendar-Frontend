@@ -816,9 +816,48 @@ const handleCreateBoundary = async (boundary) => {
         const findNextSlots = (toReschedule, allEvents, count = 3) => { const slots = []; const duration = toReschedule.end.getTime() - toReschedule.start.getTime(); const requiredDuration = duration + (2 * BUFFER_MS); let searchStart = new Date(); const sorted = [...allEvents].filter(e => e.id !== toReschedule.id).sort((a,b) => a.start - b.start); for (let i = 0; i < 14; i++) { let dayStart = new Date(searchStart); dayStart.setDate(dayStart.getDate() + i); dayStart.setHours(9, 0, 0, 0); let dayEnd = new Date(dayStart); dayEnd.setHours(17, 0, 0, 0); let lastEventEnd = dayStart; for(const event of sorted.filter(e => e.start.toDateString() === dayStart.toDateString())) { if (event.start.getTime() - lastEventEnd.getTime() >= requiredDuration) { slots.push(new Date(lastEventEnd.getTime() + BUFFER_MS)); if (slots.length >= count) return slots; } lastEventEnd = new Date(Math.max(lastEventEnd.getTime(), event.end.getTime())); } if (dayEnd.getTime() - lastEventEnd.getTime() >= requiredDuration) { slots.push(new Date(lastEventEnd.getTime() + BUFFER_MS)); if (slots.length >= count) return slots; } } return slots; };
         const handleGetAiSuggestion = () => { setIsResolving(true); setAiSuggestion(null); setTimeout(() => { const severityMap = { 'High': 3, 'Medium': 2, 'Low': 1 }; let toKeep = severityMap[eventA.severity] >= severityMap[eventB.severity] ? eventA : eventB; let toReschedule = toKeep === eventA ? eventB : eventA; const nextSlots = findNextSlots(toReschedule, processedEvents); setAiSuggestion({ toKeep, toReschedule, nextSlots }); setIsResolving(false); }, 1500); };
 
-        return ( <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-30 p-4"><div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-2xl"><h3 className="text-2xl font-bold mb-2 text-red-600 dark:text-red-500">Scheduling Conflict Detected</h3><p className="text-gray-600 dark:text-gray-400 mb-4">You have an overlap on {formatDate(eventA.start)}. Choose one to keep, or let AI find a new time.</p><div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            {[eventA, eventB].map(event => (<div key={event.id} className="border dark:border-gray-700 p-4 rounded-lg bg-gray-50 dark:bg-gray-900/50 flex flex-col justify-between"><div><h4 className="font-bold text-lg flex items-center gap-2 dark:text-white">{event.calendar === 'Google' ? <GoogleIcon/> : <OutlookIcon/>}{event.title}</h4><p className="text-gray-700 dark:text-gray-300">{formatTime(event.start)} - {formatTime(event.end)}</p><p className="text-sm font-semibold mt-2 dark:text-gray-400">Severity: <span className={`${event.severity === 'High' ? 'text-orange-500' : event.severity === 'Medium' ? 'text-blue-500' : 'text-green-500'}`}>{event.severity}</span></p></div><button onClick={() => onResolve(event === eventA ? eventB : eventA)} className="mt-4 w-full px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700">Keep This</button></div>))}
-            </div><div className="border-t dark:border-gray-700 pt-4 space-y-2"><button onClick={handleGetAiSuggestion} disabled={isResolving} className="flex items-center justify-center w-full px-4 py-3 text-sm font-semibold bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-400 dark:disabled:bg-purple-800 transition-colors"><SparklesIcon/> {isResolving ? 'Analyzing Your Schedule...' : 'Get AI Suggestions'}</button><button onClick={() => onIgnore(getConflictId(eventA, eventB))} className="w-full px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Ignore for now</button>{aiSuggestion && (<div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 rounded-lg text-sm space-y-3"><p><strong>Suggestion:</strong> Keep "{aiSuggestion.toKeep.title}". Here are some open slots for "{aiSuggestion.toReschedule.title}":</p>{aiSuggestion.nextSlots?.length > 0 ? (<div className="flex flex-col gap-2 pt-2">{aiSuggestion.nextSlots.map((slot, i) => (<button key={i} onClick={() => onReschedule(aiSuggestion.toReschedule, slot)} className="w-full text-left px-4 py-2 font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700">Reschedule to: {formatDateTime(slot)}</button>))}<button onClick={() => setAiSuggestion(null)} className="w-full mt-2 px-4 py-2 font-semibold bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button></div>) : (<p className="pt-2">I couldn't find open slots with a 15-min buffer in the next 2 weeks.</p>)}</div>)}</div></div></div>);
+        return ( 
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-30 p-4">
+                <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-2xl">
+                    <h3 className="text-2xl font-bold mb-2 text-red-600 dark:text-red-500">Scheduling Conflict Detected</h3>
+                    <p className="text-gray-600 dark:text-gray-400 mb-4">You have an overlap on {formatDate(eventA.start)}. Choose one to keep, or let AI find a new time.</p>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            {[eventA, eventB].map(event => (
+                                <div key={event.id} className="border dark:border-gray-700 p-4 rounded-lg bg-gray-50 dark:bg-gray-900/50 flex flex-col justify-between"><div>
+                                            <h4 className="font-bold text-lg flex items-center gap-2 dark:text-white">
+                                                {event.calendar === 'Google' ? <GoogleIcon/> : <OutlookIcon/>}
+                                                {event.title}
+                                            </h4>
+                                                <p className="text-gray-700 dark:text-gray-300">
+                                                    {formatTime(event.start)} - {formatTime(event.end)}
+                                                </p>
+                                                <p className="text-sm font-semibold mt-2 dark:text-gray-400">
+                                                    Severity: <SeverityBadge severity={event.severity} />
+                                                </p>
+                                            </div>
+                                            <button onClick={() => onResolve(event === eventA ? eventB : eventA)} className="mt-4 w-full px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700">Keep This</button>
+                                                        </div>))}
+            </div>
+            <div className="border-t dark:border-gray-700 pt-4 space-y-2">
+            <button
+                onClick={handleGetAiSuggestion}
+                disabled={isResolving}
+                className="flex items-center justify-center w-full px-4 py-3 text-sm font-semibold bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-400 dark:disabled:bg-purple-800 transition-colors"
+                >
+                {isResolving ? (
+                <>Analyzing...</>
+                ) : (
+                <>
+                    <SparklesIcon className="w-5 h-5 mr-2" /> Get AI Suggestions
+                </>
+                )}
+            </button>
+                <button onClick={() => onIgnore(getConflictId(eventA, eventB))} className="w-full px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Ignore for now</button>
+                {aiSuggestion && (<div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 rounded-lg text-sm space-y-3">
+                <p><strong>Suggestion:</strong> Keep "{aiSuggestion.toKeep.title}". Here are some open slots for "{aiSuggestion.toReschedule.title}":</p>
+                {aiSuggestion.nextSlots?.length > 0 ? (<div className="flex flex-col gap-2 pt-2">{aiSuggestion.nextSlots.map((slot, i) => (<button key={i} onClick={() => onReschedule(aiSuggestion.toReschedule, slot)} className="w-full text-left px-4 py-2 font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700">Reschedule to: {formatDateTime(slot)}</button>))}
+                <button onClick={() => setAiSuggestion(null)} className="w-full mt-2 px-4 py-2 font-semibold bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                </div>) : (<p className="pt-2">I couldn't find open slots with a 15-min buffer in the next 2 weeks.</p>)}</div>)}</div></div></div>);
     };
 
     // --- Main Render (Simplified Logic) ---
