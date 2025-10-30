@@ -476,60 +476,75 @@ export default function App() {
         }
     };
 
-    // --- Event/Conflict Handlers ---
-    const handleCreateBoundary = async (boundary) => {
-        setShowBoundaryModal(false);
-        setIsLoadingEvents(true);
-        setFetchError('');
-        
-        // --- FIX: Get the browser's local timezone ---
-        const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        console.log(`Creating block with timezone: ${userTimeZone}`);
-        
-        // --- FIX: Send LOCAL time string, not UTC string ---
-        const localStartStr = formatLocalDateTime(boundary.start); // e.g., "2025-10-28T09:00:00"
-        const localEndStr = formatLocalDateTime(boundary.end);
-        // --- End Fix ---
+    // --- FIXED: handleCreateBoundary with UTC ISO strings ---
+const handleCreateBoundary = async (boundary) => {
+    setShowBoundaryModal(false);
+    setIsLoadingEvents(true);
+    setFetchError('');
 
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/events/create`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ 
-                    title: boundary.title, 
-                    start: localStartStr,     // <-- Send local time string
-                    end: localEndStr,         // <-- Send local time string
-                    timeZone: userTimeZone    // <-- Send the timezone
-                }),
-            });
-             if (!response.ok) {
-                 const text = await response.text();
-                 try { const jsonData = JSON.parse(text); throw new Error(jsonData.message || `Failed to create block, status: ${response.status}`); }
-                 catch(e){ throw new Error(`Failed to create block, received non-JSON response (status ${response.status}): ${text.substring(0, 100)}...`); }
-             }
-            const result = await response.json();
-            console.log('Block creation result:', result);
-            if (result.createdEvents && Array.isArray(result.createdEvents)) {
-                const newParsedEvents = result.createdEvents.map(e => ({
-                    ...e,
-                    start: new Date(e.start),
-                    end: new Date(e.end),
-                    isBoundary: true
-                }));
-                setAllEvents(prev => [...prev, ...newParsedEvents]);
-            } else {
-                 console.warn("Backend did not return createdEvents, falling back to full refresh.");
-                 fetchUserData(token);
+    // Get user's timezone (e.g., "America/Los_Angeles")
+    const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    console.log(`Creating boundary block in timezone: ${userTimeZone}`);
+
+    // Convert local Date objects to UTC ISO strings
+    const startUTC = boundary.start.toISOString(); // e.g., "2025-10-28T16:00:00.000Z"
+    const endUTC = boundary.end.toISOString();
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/events/create`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                title: boundary.title,
+                start: startUTC,       // ← UTC ISO string
+                end: endUTC,           // ← UTC ISO string
+                timeZone: userTimeZone // ← For reference (optional, but helpful)
+            }),
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            let errorMessage = `Failed to create block, status: ${response.status}`;
+            try {
+                const jsonData = JSON.parse(text);
+                errorMessage = jsonData.message || errorMessage;
+            } catch (e) {
+                errorMessage = `Server error: ${text.substring(0, 100)}...`;
             }
-        } catch (error) {
-            console.error("Error creating boundary:", error);
-             if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-                 setFetchError("Could not connect to the backend server to create block. Is it running?");
-             } else { setFetchError(`Error creating block: ${error.message}`); }
-        } finally {
-             setIsLoadingEvents(false);
+            throw new Error(errorMessage);
         }
-    };
+
+        const result = await response.json();
+        console.log('Block creation result:', result);
+
+        if (result.createdEvents && Array.isArray(result.createdEvents)) {
+            const newParsedEvents = result.createdEvents.map(e => ({
+                ...e,
+                start: new Date(e.start),  // Safe: should be UTC ISO
+                end: new Date(e.end),
+                isBoundary: true
+            }));
+
+            // Optimistically add to UI
+            setAllEvents(prev => [...prev, ...newParsedEvents]);
+        } else {
+            console.warn("Backend did not return createdEvents. Falling back to full refresh.");
+            fetchUserData(token); // Full refresh fallback
+        }
+    } catch (error) {
+        console.error("Error creating boundary:", error);
+        if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+            setFetchError("Could not connect to the backend server to create block. Is it running?");
+        } else {
+            setFetchError(`Error creating block: ${error.message}`);
+        }
+    } finally {
+        setIsLoadingEvents(false);
+    }
+};
     
     // --- FIX: Full Backend Delete Function ---
     const handleDeleteEvent = async (eventToDelete) => {
