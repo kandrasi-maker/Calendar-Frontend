@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AuthComponent } from './components/AuthComponent';
 import { Header } from './components/Header';
+import { Calendar } from './components/Calendar';
+import { BoundaryModal } from './components/BoundaryModal';
+import { EventDetailModal } from './components/EventDetailModal';
 
 // --- Add this inside your App.jsx, after imports ---
 const SeverityBadge = ({ severity }) => {
@@ -601,131 +604,7 @@ const handleCreateBoundary = async (boundary) => {
 
     // --- Main App Components ---
     const Onboarding = () => ( <div className="text-center p-10 border rounded-lg bg-white dark:bg-gray-800/50 mb-8 shadow-sm dark:border-gray-700"><h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-3">Welcome, {user?.email || 'User'}</h2><p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">Connect your calendars to see your unified availability.</p></div>);
-    const Calendar = () => {
-        console.log("Rendering Calendar Component");
-        const hours = Array.from({ length: 24 }, (_, i) => i);
-        const days = Array.from({ length: 7 }, (_, i) => addDays(viewStartDate, i));
-        const hourHeight = 60;
-
-        const getEventStyle = (event) => {
-            if (!(event.start instanceof Date) || !(event.end instanceof Date) || isNaN(event.start) || isNaN(event.end)) {
-                 console.error("Invalid date passed to getEventStyle:", event);
-                 return { display: 'none' };
-             }
-            const startHour = event.start.getHours();
-            const startMinute = event.start.getMinutes();
-            const endTime = event.end > event.start ? event.end : new Date(event.start.getTime() + 60*60*1000);
-            const durationMinutes = (endTime.getTime() - event.start.getTime()) / (1000 * 60);
-            if (durationMinutes <= 0) { console.warn("Event has zero or negative duration, setting min height:", event); }
-            const top = (startHour + startMinute / 60) * hourHeight;
-            const height = Math.max(15, (Math.max(0, durationMinutes) / 60) * hourHeight);
-            const maxHeight = (24 * hourHeight) - top;
-            const style = { top: `${top}px`, height: `${Math.min(height, maxHeight)}px` };
-            return style;
-        };
-
-         const getEventColor = (event) => {
-            if (event.isConflict) return 'bg-red-500/90 hover:bg-red-600/90 dark:bg-red-600/70 dark:hover:bg-red-500/70 border border-red-400/50';
-            if (event.isBoundary) return 'bg-gray-500/90 hover:bg-gray-600/90 dark:bg-gray-600/70 dark:hover:bg-gray-500/70 border border-gray-400/50';
-            if (event.severity === 'High') return 'bg-orange-500/90 hover:bg-orange-600/90 dark:bg-orange-600/70 dark:hover:bg-orange-500/70 border border-orange-400/50';
-            if (event.severity === 'Medium') return 'bg-blue-500/90 hover:bg-blue-600/90 dark:bg-blue-600/70 dark:hover:bg-blue-500/70 border border-blue-400/50';
-            if (event.severity === 'Low') return 'bg-green-500/90 hover:bg-green-600/90 dark:bg-green-600/70 dark:hover:bg-green-500/70 border border-green-400/50';
-            return 'bg-blue-500/90 hover:bg-blue-600/90';
-        };
-
-        return (
-            <div className="flex flex-col p-4 sm:p-6">
-                {/* Header Row */}
-                <div className="grid grid-cols-[auto_repeat(7,minmax(0,1fr))] border-b border-gray-200 dark:border-gray-700 sticky top-[65px] bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10">
-                    <div className="w-16 sm:w-20 border-r border-gray-200 dark:border-gray-700"></div> {/* Spacer */}
-                    {days.map((day, index) => {
-                        const isToday = new Date().toDateString() === day.toDateString();
-                        return (
-                            <div key={index} className="text-center py-3 border-r border-gray-200 dark:border-gray-700 last:border-r-0">
-                                <div className={`text-xs font-semibold uppercase ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}>{formatDayHeader(day)}</div>
-                                <div className={`mt-1 text-2xl font-bold ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-gray-100'}`}>{formatDayNumber(day)}</div>
-                            </div>
-                        );
-                     })}
-                </div>
-
-                {/* Main Grid Area */}
-                <div className="flex flex-grow overflow-auto relative">
-                    {/* Time Column */}
-                    <div className="w-16 sm:w-20 border-r border-gray-200 dark:border-gray-700 shrink-0">
-                        {hours.map(hour => (
-                            <div key={hour} className="h-[60px] relative text-right pr-2 border-b border-gray-100 dark:border-gray-800">
-                                <span className="absolute -top-2 right-2 text-xs text-gray-400 dark:text-gray-500">
-                                     {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Day Columns & Events Grid */}
-                    <div className="grid grid-cols-7 flex-grow relative">
-                         {/* Background Hour Lines */}
-                         {hours.map(hour => (
-                             <div key={`line-${hour}`} className="col-span-7 h-[60px] border-b border-gray-100 dark:border-gray-800 pointer-events-none"></div>
-                         ))}
-
-                        {/* Event Rendering Area (Overlay) */}
-                        <div className="absolute inset-0 grid grid-cols-7 pointer-events-none">
-                             {days.map((day, dayIndex) => {
-                                 const eventsForDay = processedEvents.filter(event => event.start instanceof Date && event.start.toDateString() === day.toDateString());
-                                 return (
-                                    <div key={dayIndex} className="relative border-r border-gray-200 dark:border-gray-700 last:border-r-0 h-full">
-                                        {eventsForDay.map(event => (
-                                                <div
-                                                    key={event.id}
-                                                    className={`absolute left-1 right-1 p-1.5 rounded-lg text-xs font-semibold truncate text-white cursor-pointer ${getEventColor(event)} transition-colors overflow-hidden pointer-events-auto`}
-                                                    style={getEventStyle(event)}
-                                                    onClick={(e) => { e.stopPropagation(); setShowEventDetail(event); }}
-                                                    title={`${event.title} (${event.severity})\n${formatTime(event.start)} - ${formatTime(event.end)}`}
-                                                >
-                                                    <div className="font-bold">{event.title}</div>
-                                                    <div className="text-[10px]">{formatTime(event.start)} - {formatTime(event.end)}</div>
-                                                    {event.isConflict && <WarningIcon />}
-                                                    {event.isBoundary && '🔒'}
-                                                </div>
-                                            ))}
-                                    </div>
-                                 );
-                             })}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    };
-    const BoundaryModal = ({ onClose }) => {
-        const [title, setTitle] = useState(''); const [date, setDate] = useState(new Date().toISOString().split('T')[0]); const [startTime, setStartTime] = useState('09:00'); const [endTime, setEndTime] = useState('10:00'); const [error, setError] = useState(''); const [isSuggesting, setIsSuggesting] = useState(false); const [isCreating, setIsCreating] = useState(false);
-        const handleSubmit = async (e) => {
-             e.preventDefault(); setError(''); if (!title || !date || !startTime || !endTime) { setError('All fields required.'); return; } const start = new Date(`${date}T${startTime}`), end = new Date(`${date}T${endTime}`); if (start >= end) { setError('End time must be after start.'); return; } if (processedEvents.some(event => (start < new Date(event.end.getTime() + BUFFER_MS)) && (new Date(end.getTime() + BUFFER_MS) > event.start))) { setError('Time is too close to an existing event (15 min buffer).'); return; } setIsCreating(true); await handleCreateBoundary({ title, start, end }); setIsCreating(false);
-        };
-        const handleSuggestTitle = async () => {
-            setIsSuggesting(true); setError(''); const prompt = "Suggest three concise, professional calendar event titles for a block of personal focus time. Examples: 'Deep Work', 'Strategic Planning', 'No Meetings'. Return as a comma-separated list."; const suggestions = await callGeminiAPI(prompt, token); const firstSuggestion = suggestions.split(',')[0].replace(/"/g, '').trim(); if (firstSuggestion && !firstSuggestion.toLowerCase().includes('error') && !firstSuggestion.toLowerCase().includes('sorry')) { setTitle(firstSuggestion); } else { console.error("AI Title Suggestion failed:", suggestions); setError(suggestions); } setIsSuggesting(false);
-        };
-        return ( <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-30 p-4"><div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md"><h3 className="text-2xl font-bold mb-6 dark:text-white">Create Temporal Boundary</h3><form onSubmit={handleSubmit} className="space-y-4"><div><label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label><div className="flex gap-2 mt-1"><input type="text" id="title" value={title} onChange={e => setTitle(e.target.value)} placeholder='"Family Time"' className="flex-grow bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 dark:text-white" /><button type="button" onClick={handleSuggestTitle} disabled={isSuggesting || isCreating} className="px-3 py-2 text-sm font-semibold bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-400 dark:disabled:bg-purple-800 transition-colors">✨ {isSuggesting ? '...' : 'Suggest'}</button></div></div><div><label htmlFor="date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label><input type="date" id="date" value={date} onChange={e => setDate(e.target.value)} disabled={isCreating} className="mt-1 block w-full bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 dark:text-white disabled:opacity-50" /></div><div className="flex gap-4"><div className="flex-1"><label htmlFor="start" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Start Time</label><input type="time" id="start" value={startTime} onChange={e => setStartTime(e.target.value)} disabled={isCreating} className="mt-1 block w-full bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 dark:text-white disabled:opacity-50" /></div><div className="flex-1"><label htmlFor="end" className="block text-sm font-medium text-gray-700 dark:text-gray-300">End Time</label><input type="time" id="end" value={endTime} onChange={e => setEndTime(e.target.value)} disabled={isCreating} className="mt-1 block w-full bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 dark:text-white disabled:opacity-50" /></div></div>{error && <p className="text-red-500 text-sm bg-red-100 dark:bg-red-900/50 p-3 rounded-lg">{error}</p>}<div className="flex justify-end gap-4 pt-4"><button type="button" onClick={onClose} disabled={isCreating} className="px-5 py-2.5 text-sm font-semibold bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50">Cancel</button><button type="submit" disabled={isCreating} className="px-5 py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 dark:disabled:bg-blue-800">{isCreating ? 'Creating...' : 'Create Block'}</button></div></form></div></div>);
-    };
-    const EventDetailModal = ({ event, onClose }) => {
-        const [agenda, setAgenda] = useState(''); const [isPreparing, setIsPreparing] = useState(false); const [isDeleting, setIsDeleting] = useState(false);
-        const handlePrepare = async () => { setIsPreparing(true); setAgenda(''); const prompt = `Create a concise 3-point agenda for a meeting titled "${event.title}". Use bullet points.`; const result = await callGeminiAPI(prompt, token); setAgenda(result); setIsPreparing(false); };
-        
-        const onDeleteConfirm = async () => {
-             if (window.confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)){
-                 setIsDeleting(true);
-                 await handleDeleteEvent(event); // Call the main handler
-                 // Modal will be closed by main handler setting showEventDetail(null)
-             }
-         };
-
-        if (!event) return null;
-        return ( <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-30 p-4"><div className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-lg"><div className="flex items-start justify-between mb-4 pb-4 border-b dark:border-gray-700"><div className="flex-1"><h3 className="text-xl sm:text-2xl font-bold dark:text-white flex items-center gap-3">{event.calendar === 'Google' ? <GoogleIcon /> : <OutlookIcon />}{event.title || "Untitled Event"}</h3><p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base mt-1">{formatDate(event.start)}</p><p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base">{formatTime(event.start)} - {formatTime(event.end)}</p></div><button onClick={onClose} disabled={isPreparing || isDeleting} className="p-2 ml-4 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-50"><XIcon/></button></div><div className="mb-6"><button onClick={handlePrepare} disabled={isPreparing || isDeleting} className="flex items-center justify-center w-full px-4 py-3 text-sm font-semibold bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-400 dark:disabled:bg-purple-800 transition-colors"><SparklesIcon/> {isPreparing ? 'Generating Agenda...' : '✨ Prepare for Meeting'}</button>{agenda && (<div className={`mt-4 p-4 rounded-lg text-sm space-y-2 ${agenda.toLowerCase().includes('error') ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' : 'bg-purple-50 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200'}`}><h4 className="font-bold">Suggested Agenda:</h4><div className="whitespace-pre-wrap">{agenda}</div></div>)}</div><div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-700">
-            <button onClick={onDeleteConfirm} disabled={isDeleting || isPreparing} className="flex items-center justify-center gap-1 px-4 py-2 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-red-400 dark:disabled:bg-red-800 transition-colors"><TrashIcon /> {isDeleting ? 'Deleting...' : 'Delete Event'}</button>
-            <button onClick={onClose} disabled={isDeleting || isPreparing} className="px-4 py-2 text-sm font-semibold bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50">Close</button>
-        </div></div></div>);
-    };
+    
     const ConflictResolutionModal = ({ conflicts, onResolve, onReschedule, onIgnore }) => {
         const [isResolving, setIsResolving] = useState(false); const [aiSuggestion, setAiSuggestion] = useState(null);
         const currentConflict = conflicts[0];
