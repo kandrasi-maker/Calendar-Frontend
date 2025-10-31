@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { Calendar } from './components/Calendar';
 import { BoundaryModal } from './components/BoundaryModal';
 import { EventDetailModal } from './components/EventDetailModal';
+import toast, { Toaster } from 'react-hot-toast'; // <-- ADDED TOASTS
 
 // --- Add this inside your App.jsx, after imports ---
 const SeverityBadge = ({ severity }) => {
@@ -91,10 +92,14 @@ const callGeminiAPI = async (prompt, token) => {
         return result.suggestion || "Sorry, I couldn't generate a response.";
     } catch (error) {
         console.error("Backend AI Suggestion call error:", error);
+        let errorMsg;
         if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-            return "Could not connect to the backend server for AI suggestion. Is it running?";
+            errorMsg = "Could not connect to the backend server for AI suggestion.";
+        } else {
+            errorMsg = error.message || "An error occurred while contacting the AI.";
         }
-        return error.message || "An error occurred while contacting the AI.";
+        toast.error(errorMsg); // <-- ADDED TOAST
+        return errorMsg; // Still return error for modal
     }
 };
 
@@ -168,7 +173,7 @@ export default function App() {
     // --- Resilient Data Fetching ---
     const fetchUserData = async (currentToken) => {
         if (!currentToken) { console.log("fetchUserData aborted: No token."); return; }
-        setFetchError('');
+        // setFetchError('');
         console.log("fetchUserData called.");
 
         let meOk = false;
@@ -406,7 +411,7 @@ export default function App() {
 
     // --- Connection Handler ---
     const handleConnect = async (provider) => {
-        setFetchError('');
+        // setFetchError('');
         try {
             const response = await fetch(`${API_BASE_URL}/api/connect/${provider}`, { headers: { Authorization: `Bearer ${token}` }});
             if (!response.ok) {
@@ -429,7 +434,7 @@ export default function App() {
 const handleCreateBoundary = async (boundary) => {
     setShowBoundaryModal(false);
     setIsLoadingEvents(true);
-    setFetchError('');
+    // setFetchError('');
 
     // Get user's timezone (e.g., "America/Los_Angeles")
     const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -455,34 +460,25 @@ const handleCreateBoundary = async (boundary) => {
         });
 
         if (!response.ok) {
-            const text = await response.text();
-            let errorMessage = `Failed to create block, status: ${response.status}`;
-            try {
-                const jsonData = JSON.parse(text);
-                errorMessage = jsonData.message || errorMessage;
-            } catch (e) {
-                errorMessage = `Server error: ${text.substring(0, 100)}...`;
+                 const text = await response.text();
+                 try { const jsonData = JSON.parse(text); throw new Error(jsonData.message || `Failed to create block, status: ${response.status}`); }
+                 catch(e){ throw new Error(`Failed to create block, received non-JSON response (status ${response.status}): ${text.substring(0, 100)}...`); }
+             }
+            const result = await response.json();
+            console.log('Block creation result:', result);
+            if (result.createdEvents && Array.isArray(result.createdEvents)) {
+                const newParsedEvents = result.createdEvents.map(e => ({
+                    ...e,
+                    start: new Date(e.start),
+                    end: new Date(e.end),
+                    isBoundary: true
+                }));
+                setAllEvents(prev => [...prev, ...newParsedEvents]);
+                toast.success('Block created successfully!'); // <-- ADDED TOAST
+            } else {
+                 console.warn("Backend did not return createdEvents, falling back to full refresh.");
+                 fetchUserData(token);
             }
-            throw new Error(errorMessage);
-        }
-
-        const result = await response.json();
-        console.log('Block creation result:', result);
-
-        if (result.createdEvents && Array.isArray(result.createdEvents)) {
-            const newParsedEvents = result.createdEvents.map(e => ({
-                ...e,
-                start: new Date(e.start),  // Safe: should be UTC ISO
-                end: new Date(e.end),
-                isBoundary: true
-            }));
-
-            // Optimistically add to UI
-            setAllEvents(prev => [...prev, ...newParsedEvents]);
-        } else {
-            console.warn("Backend did not return createdEvents. Falling back to full refresh.");
-            fetchUserData(token); // Full refresh fallback
-        }
     } catch (error) {
         console.error("Error creating boundary:", error);
         if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
@@ -499,7 +495,7 @@ const handleCreateBoundary = async (boundary) => {
     const handleDeleteEvent = async (eventToDelete) => {
         if (!eventToDelete || !eventToDelete.id || !eventToDelete.calendar) {
             console.error("Invalid event data for deletion:", eventToDelete);
-            setFetchError("Cannot delete event: Invalid data.");
+            toast.error("Cannot delete event: Invalid data."); // <-- ADDED TOAST
             return;
         }
         console.log(`Deleting event: ${eventToDelete.title} (${eventToDelete.id}) from ${eventToDelete.calendar}`);
@@ -529,9 +525,10 @@ const handleCreateBoundary = async (boundary) => {
                 throw new Error(errorMessage);
             }
              console.log('Delete result:', responseText);
+             toast.success('Event deleted successfully!'); // <-- ADDED TOAST
         } catch (error) {
             console.error("Error deleting event:", error);
-            setFetchError(`Error deleting event: ${error.message}. Reverting calendar.`);
+            toast.error(`Error deleting event: ${error.message}. Reverting.`); // <-- ADDED TOAST
             setAllEvents(originalEvents); // Revert
         }
     };
@@ -572,9 +569,10 @@ const handleCreateBoundary = async (boundary) => {
                 throw new Error(errorMessage);
             }
             console.log('Update result:', responseText);
+            toast.success('Event rescheduled successfully!'); // <-- ADDED TOAST
         } catch (error) {
              console.error("Error rescheduling event:", error);
-             setFetchError(`Error rescheduling event: ${error.message}. Reverting changes.`);
+             toast.error(`Error rescheduling event: ${error.message}. Reverting.`); // <-- ADDED TOAST
              setAllEvents(originalEvents);
         }
     };
@@ -694,6 +692,23 @@ const handleCreateBoundary = async (boundary) => {
 
     return (
         <div className={`bg-gray-50 dark:bg-gray-900 min-h-screen font-sans text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col`}>
+            {/* ADDED TOASTER COMPONENT */}
+            <Toaster
+                position="bottom-right"
+                toastOptions={{
+                    className: '',
+                    style: {
+                        background: '#333',
+                        color: '#fff',
+                    },
+                    success: {
+                        duration: 3000,
+                    },
+                    error: {
+                        duration: 5000,
+                    },
+                }}
+            />
             {token && user && <Header />}
             <main className="container mx-auto flex-grow overflow-auto">
                 {renderMainContent()}
