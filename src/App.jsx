@@ -688,7 +688,28 @@ export default function App() {
      console.log("Rendering check - Before return: Token:", token, "User:", user);
      if (!token || !user) {
          console.log("Rendering AuthComponent");
-         return <AuthComponent onLoginSuccess={handleLoginSuccess} />;
+         return (
+             // Add Toaster here for login/register errors
+             <div>
+                <Toaster
+                    position="bottom-right"
+                    toastOptions={{
+                        className: '',
+                        style: {
+                            background: '#333',
+                            color: '#fff',
+                        },
+                        success: {
+                            duration: 3000,
+                        },
+                        error: {
+                            duration: 5000,
+                        },
+                    }}
+                />
+                <AuthComponent onLoginSuccess={handleLoginSuccess} />
+             </div>
+         );
      }
 
     // --- Main App Components ---
